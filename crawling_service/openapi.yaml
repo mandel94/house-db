@@ -1,0 +1,92 @@
+openapi: 3.0.0
+info:
+  title: Scrapy Spider API
+  version: 1.0.0
+  description: API for running Scrapy spiders to crawl websites and modify database records.
+servers:
+  - url: http://localhost:8000
+    description: Local server
+
+paths:
+  /crawl/{category}:
+    post:
+      summary: Crawling a website
+      description: This endpoint triggers a Scrapy spider to crawl a website for either on-sale or on-rent listings based on the specified category and location, and modifies the database with the results.
+      parameters:
+        - in: path
+          name: category
+          required: true
+          schema:
+            type: string
+            enum: [onsales, onrent]
+          description: The category of the listings (onsales or onrent)
+        - in: query
+          name: where
+          required: true
+          schema:
+            type: string
+          description: The location to search for the listings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                additional_params:
+                  $ref: '#/components/schemas/AdditionalParams'
+      responses:
+        '200':
+          description: Database modification completed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Database updated successfully.
+                  status:
+                    type: string
+                    example: success
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Invalid category or location specified.
+                  status:
+                    type: string
+                    example: error
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: An error occurred while processing the request.
+                  status:
+                    type: string
+                    example: error
+
+components:
+  schemas:
+    AdditionalParams:
+      type: object
+      description: Additional parameters for the spider
+      properties:
+        limit:
+          type: integer
+          description: The maximum number of results to fetch
+          default: 10
+        sort_by:
+          type: string
+          description: The field to sort the results by
+          enum: [price, date]
