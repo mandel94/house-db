@@ -62,9 +62,11 @@ ROBOTSTXT_OBEY = True
 
 # Configure item pipelines
 # See https://docs.scrapy.org/en/latest/topics/item-pipeline.html
-#ITEM_PIPELINES = {
-#    "crawling_service.pipelines.CrawlingServicePipeline": 300,
-#}
+ITEM_PIPELINES = {
+   "crawling_service.pipelines.HousePipeline": 300,
+    "crawling_service.pipelines.AddPolysemePipeline": 400,
+    "crawling_service.pipelines.WriteToJsonLines": 500,
+}
 
 # Enable and configure the AutoThrottle extension (disabled by default)
 # See https://docs.scrapy.org/en/latest/topics/autothrottle.html
