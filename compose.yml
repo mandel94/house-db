@@ -1,0 +1,27 @@
+# https://swagger.io/docs/open-source-tools/swagger-ui/usage/installation/ 
+services:
+  settings_service:
+    build: ./settings_service
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./settings_service:/app
+  swagger:
+    image: swaggerapi/swagger-ui
+    ports:
+      - "8080:8080"
+    environment:
+      - SWAGGER_JSON=/crawling_service/openapi.yaml
+    volumes:
+      - ./crawling_service:/crawling_service
+  crawling_service:
+    build: ./crawling_service
+    restart: always
+    ports:
+      - "8000:5000"
+    volumes:
+      - ./crawling_service:/app
+    depends_on:
+      - settings_service
+    
+
