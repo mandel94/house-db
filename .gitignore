@@ -1,0 +1,41 @@
+# Ignore system files
+.DS_Store
+Thumbs.db
+
+# Ignore log files and databases
+*.log
+*.sql
+*.sqlite
+
+# Ignore temporary files and folders
+*.tmp
+*.swp
+*.bak
+*.pid
+*.seed
+*.lock
+
+# Ignore compiled source files
+*.class
+*.o
+*.so
+
+# Ignore Python-specific files
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pylintrc
+.venv/
+.env/
+
+# Ignore Node.js-specific files
+node_modules/
+npm-debug.log
+yarn-error.log
+.pnpm-debug.log
+.vscode/
+
+# Other custom files
+notes.*
+
