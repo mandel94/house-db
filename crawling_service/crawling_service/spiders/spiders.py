@@ -64,6 +64,10 @@ class ImmobiliareSitemapSpider(scrapy.Spider):
             "Riscaldamento": "heating",
             "Climatizzazione": "air_conditioning",
             "Ascensore": "elevator",
+            "prezzo": "price",
+            "spese condominio": "condo_fees",
+            "Stato": "state",
+            "Certificazione energetic": "energy_certification",
         },
     }
 
@@ -108,16 +112,25 @@ class ImmobiliareSitemapSpider(scrapy.Spider):
                 "//h1[@class='re-title__title']/text()"
             ).extract_first()
             loader.add_value("title", title)
-            characteristics = response.xpath(
+            characteristics_section = response.xpath(
                 "//dl[contains(@class, 're-featuresGrid__list')]"
             )
-            features = self.scrape_characteristics(characteristics)
-            for translation, value in features:
-                if translation:
-                    loader.add_value(translation, value)
+            chars = self.scrape_characteristics(characteristics_section)
+            self.load_multiple(loader, chars)
             description = response.xpath(
                 "//div[@data-tracking-key='description']/text()"
-            ).extract_first()
+            )
+            costs_section = response.xpath("//div[@data-tracking-key='costs']")
+            cost_info = self.scrape_costs(costs_section)
+            self.load_multiple(loader, cost_info)
+            energy_consumptions_section = response.xpath(
+                "//div[@data-tracking-key='energy-consumptions']"
+            )
+            energy_consumptions_info = self.scrape_energy_consumptions(
+                energy_consumptions_section
+            )
+            self.load_multiple(loader, energy_consumptions_info)
+            logger.debug(f"Costs section: {costs_section}")
             loader.add_value("description", description)
             yield loader.load_item()
         except Exception as e:
@@ -125,22 +138,50 @@ class ImmobiliareSitemapSpider(scrapy.Spider):
 
     def scrape_characteristics(self, characteristics):
         try:
-            features_titles = characteristics.xpath(
-                "div[@class='re-featuresItem']//dt[@class='re-featuresItem__title']/text()"
-            ).getall()
-            features_values = characteristics.xpath(
-                "div[@class='re-featuresItem']//dd[@class='re-featuresItem__description']/text()"
-            ).getall()
-            features = []
-            for feature_name, feature_value in zip(features_titles, features_values):
-                feature_name = feature_name.strip()
-                feature_value = feature_value.strip()
-                features.append(
-                    (self.translate(feature_name, raise_error=False), feature_value)
-                )
-            return features
+            characteristics_props = self.scrape_child_properties(
+                characteristics,
+                title_xpath="div[@class='re-featuresItem']//dt[@class='re-featuresItem__title']/text()",
+                value_xpath="div[@class='re-featuresItem']//dd[@class='re-featuresItem__description']/text()",
+            )
+            return characteristics_props
         except Exception as e:
             logger.error(f"Error scraping characteristics: {e}", exc_info=True)
+
+    def scrape_costs(self, costs):
+        try:
+            cost_props = self.scrape_child_properties(
+                costs,
+                title_xpath="dl[@class='re-realEstateFeatures__list']//dt/text()",
+                value_xpath="dl[@class='re-realEstateFeatures__list']//dd/text()",
+            )
+            return cost_props
+        except Exception as e:
+            logger.error(f"Error scraping costs: {e}", exc_info=True)
+
+    def scrape_energy_consumptions(self, energy_consumptions):
+        try:
+            energy_consumptions_props = self.scrape_child_properties(
+                energy_consumptions,
+                title_xpath="ul[@class='re-energy__featuresWrapper']//p/text()",
+                value_xpath="ul[@class='re-energy__featuresWrapper']//span/text()",
+            )
+            return energy_consumptions_props
+        except Exception as e:
+            logger.error(f"Error scraping energy consumptions: {e}", exc_info=True)
+
+    def scrape_child_properties(self, parent_selector, title_xpath, value_xpath):
+        energy_consumptions_features = parent_selector.xpath(f"{title_xpath}").getall()
+        features_values = parent_selector.xpath(f"{value_xpath}").getall()
+        features = []
+        for feature_name, feature_value in zip(
+            energy_consumptions_features, features_values
+        ):
+            feature_name = feature_name.strip()
+            feature_value = feature_value.strip()
+            features.append(
+                (self.translate(feature_name, raise_error=False), feature_value)
+            )
+        return features
 
     def is_target_link(self, link):
         pub_type = self.TRANSLATIONS.get(self.publication_type)
@@ -169,8 +210,18 @@ class ImmobiliareSitemapSpider(scrapy.Spider):
             err_ctx = f"Error from spider {self.__class__.__name__} when translating feature {feature_name}. Check the TRANSLATIONS dictionary of the spider."
             logger.error(f"{err_ctx}: {e}", exc_info=True)
             if raise_error:
-                raise FeatureTranslationError(feature_name, context=err_ctx, message=str(e))
+                raise FeatureTranslationError(
+                    feature_name, context=err_ctx, message=str(e)
+                )
 
+    def load_multiple(self, loader, props):
+        """Load multiple properties into the loader"""
+        try:
+            for prop_name, prop_value in props:
+                if prop_name:
+                    loader.add_value(prop_name, prop_value)
+        except Exception as e:
+            logger.error(f"Error loading multiple properties: {e}", exc_info=True)
 
 class IdealistaSpider(MyBaseSpider):
     name = "idealista"
