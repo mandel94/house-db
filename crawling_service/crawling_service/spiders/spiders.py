@@ -39,9 +39,12 @@ class MyBaseSpider(scrapy.Spider, ABC):
 class ImmobiliareSpider(scrapy.Spider):
     name = "immobiliare"
 
-    TEMPLATE_URL = "https://www.immobiliare.it/{publication_type}/{where}/"
+    TEMPLATE_URL = (
+        "https://www.immobiliare.it/{publication_type}/{where}/?pag={page_number}"
+    )
 
-    start_urls = ["https://www.immobiliare.it/sitemaps/residenziale.xml"]
+    start_urls = ["https://www.immobiliare.it/"]
+
 
     sitemap_namespaces = {
         "sitemap": "http://www.sitemaps.org/schemas/sitemap/0.9",
@@ -76,53 +79,65 @@ class ImmobiliareSpider(scrapy.Spider):
         "Certificazione energetic": "energy_certification",
     }
 
-    def __init__(self, where, publication_type, version="v1", *args, **kwargs):
+    def __init__(self, where, publication_type, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if not version in ["v0", "v1"]:
-            raise ValueError("Version must be either 'v0' or 'v1'")
-        self.version = version
         self.where = where.lower().replace(" ", "-").strip("-")
-        self.publication_type = self.ENDPOINT_TRANSLATIONS[publication_type] 
+        self.publication_type = self.ENDPOINT_TRANSLATIONS[publication_type]
         # Example of publication_type: "onsale"
 
     def parse(self, response):
-        try:
-            if self.version == "v0":
-                links = response.xpath(
-                    "//sitemap:loc/text()", namespaces=self.sitemap_namespaces
-                ).extract()
-                for link in links:
-                    if self.is_target_link(link):
-                        yield scrapy.Request(url=link, callback=self.parse_item)
-            elif self.version == "v1":
-                link = self.TEMPLATE_URL.format(
-                    where=self.where,
-                    publication_type=self.publication_type,
-                )
-                logger.debug(f"Link: {link}")
-                yield scrapy.Request(url=link, callback=self.parse_item)
-        except Exception as e:
-            logger.error(f"Error parsing sitemap: {e}", exc_info=True)
+        page_number = 1
+        first_link = self.TEMPLATE_URL.format(
+            where=self.where, publication_type=self.publication_type, page_number=page_number
+        )
+        logger.debug(f"First link: {first_link}")
+        yield scrapy.Request(url=first_link, callback=self.parse_houses_page, meta={"page_number": page_number})
 
-    def parse_item(self, response):
+    def parse_houses_page(self, response):
+        page_number = response.meta["page_number"]
+        total_pages = self.scrape_total_pages(response)
+        logger.debug(f"Total pages: {total_pages}")
         try:
-            logger.debug(f"Processing response from {response.url}")
             for house_card in self.xpath_match_house_card(response):
                 loader = HouseLoader()
                 immobiliare_house_id = self.get_id_from_card(house_card)
                 loader.add_value("immobiliare_id", immobiliare_house_id)
                 link_to_house = self.get_link_from_card(house_card)
-                logger.debug(f"Link to house: {link_to_house}")
                 yield scrapy.Request(
                     url=link_to_house,
                     callback=self.parse_house,
                     meta={"loader": loader},
                 )
+                if page_number <= int(total_pages):
+                    page_number += 1
+                    next_link = self.TEMPLATE_URL.format(
+                        where=self.where,
+                        publication_type=self.publication_type,
+                        page_number=page_number,
+                    )
+                    yield scrapy.Request(
+                        url=next_link,
+                        callback=self.parse_houses_page,
+                        meta={"page_number": page_number, "total_pages": total_pages},
+                    )
         except Exception as e:
             logger.error(f"Error parsing item: {e}", exc_info=True)
 
     def parse_house(self, response):
         try:
+            if self.is_mutiple_properties(response):
+                related_properties_links = response.xpath(
+                    "//div[@data-tracking-key='related-properties']/a/@href"
+                ).getall()
+                # logger.debug(f"Related properties links: {related_properties_links}")
+                for link in related_properties_links:
+                    loader = HouseLoader()
+                    yield scrapy.Request(
+                        url=link,
+                        callback=self.parse_house,
+                        meta={"loader": loader},
+                    )
+                return  # Do not continue parsing the current group of properties
             loader = response.meta["loader"]
             title = response.xpath(
                 "//h1[@class='re-title__title']/text()"
@@ -153,6 +168,7 @@ class ImmobiliareSpider(scrapy.Spider):
             yield loader.load_item()
         except Exception as e:
             logger.error(f"Error parsing house: {e}", exc_info=True)
+
 
     def scrape_characteristics(self, characteristics):
         try:
@@ -210,12 +226,22 @@ class ImmobiliareSpider(scrapy.Spider):
                 (self.translate_feature(feature_name, raise_error=False), feature_value)
             )
         return features
+    
+    def scrape_total_pages(self, response):
+        logging.debug(f"Spec Response: {response}")
+        return response.xpath("//div[@class='in-pagination__list']/div[last()]/text()").extract_first()
+    
+
+    def is_mutiple_properties(self, parent_selector):
+        return parent_selector.xpath("//div[@data-tracking-key='related-properties']")
 
     def is_target_link(self, link):
         pub_type = self.TRANSLATIONS.get(self.publication_type)
         where = self.where
         pattern = re.compile(f".*{pub_type}/.*{where}")
-        logger.debug(f"Pub type: {pub_type}, where: {where}, link: {link}, pattern: {pattern}, match: {pattern.match(link)}")
+        logger.debug(
+            f"Pub type: {pub_type}, where: {where}, link: {link}, pattern: {pattern}, match: {pattern.match(link)}"
+        )
         return pattern.match(link)
 
     def xpath_match_house_card(self, response):
@@ -270,13 +296,4 @@ class IdealistaSpider(MyBaseSpider):
         yield scrapy.Request(url=self.entry_point, callback=self.parse)
 
     def parse(self, response):
-        try:
-            links = response.xpath(
-                "//div[@class='item-info-container']/a/@href"
-            ).extract()
-            for link in links:
-                test_loader = TestLoader(response=response)
-                test_loader.add_value("link", link)
-                yield test_loader.load_item()
-        except Exception as e:
-            logger.error(f"Error parsing Idealista listings: {e}", exc_info=True)
+        raise NotImplementedError("Method parse not implemented")
