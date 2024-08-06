@@ -6,19 +6,12 @@
 import scrapy
 
 
-class CrawlingServiceItem(scrapy.Item):
-    # define the fields for your item here like:
-    # name = scrapy.Field()
-    pass
-
 class House(scrapy.Item):
     # Define database id, id with autoincrement
     id = scrapy.Field()
-    global_id = scrapy.Field() # Polyseme ID
+    global_id = scrapy.Field()  # Polyseme ID
     title = scrapy.Field()
-    address = scrapy.Field()
-    city = scrapy.Field()
-    district = scrapy.Field()
+    address_id = scrapy.Field()
     description = scrapy.Field()
     type = scrapy.Field()
     floor = scrapy.Field()
@@ -44,13 +37,21 @@ class House(scrapy.Item):
     price = scrapy.Field()
     condo_fees = scrapy.Field()
     agency = scrapy.Field()
-    agency_url = scrapy.Field()
-    immobiliare_id = scrapy.Field() # Codice annuncio
-    last_updated = scrapy.Field()
+    immobiliare_id = scrapy.Field()  # Codice annuncio
+    created_at = scrapy.Field()
+    last_updated = scrapy.Field() # Last updated
 
 
 
-class TestItem(scrapy.Item):
-    link = scrapy.Field()
 
+class Address(scrapy.Item):
+    address_id = scrapy.Field()
+    street = scrapy.Field()
+    city = scrapy.Field()
+    country = scrapy.Field()
+    postal_code = scrapy.Field()
+    latitude = scrapy.Field()
+    longitude = scrapy.Field()
+    created_at = scrapy.Field()
+    updated_at = scrapy.Field()
 

@@ -2,7 +2,7 @@
 # --> https://refactoring.guru/design-patterns/strategy
 
 from abc import ABC, abstractmethod
-from crawling_service.spiders.spiders import IdealistaSpider, ImmobiliareSitemapSpider
+from crawling_service.spiders.spiders import IdealistaSpider, ImmobiliareSpider
 
 
 
@@ -14,16 +14,16 @@ class SearchStrategy(ABC):
         raise NotImplementedError("Method search not implemented")
     
 
-class IdealistaBaseStrategy(SearchStrategy):
+class IdealistaStrategy(SearchStrategy):
     """Idealista Search Strategy"""
     def get_spider(self):
         return IdealistaSpider
     
 
-class ImmobiliareSitemapStrategy(SearchStrategy):
+class ImmobiliareStrategy(SearchStrategy):
     """Immobiliare Search Strategy"""
     def get_spider(self):
-        return ImmobiliareSitemapSpider
+        return ImmobiliareSpider
 
 
 class SearchContext:

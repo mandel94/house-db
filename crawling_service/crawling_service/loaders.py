@@ -4,7 +4,7 @@ from itemloaders.processors import TakeFirst, Join
 
 # Import item classes
 
-from crawling_service.items import House, TestItem
+from crawling_service.items import House
 
 
 # Define the class HouseLoader
@@ -15,8 +15,9 @@ class HouseLoader(ItemLoader):
     default_input_processor = TakeFirst()
     default_output_processor = Join()
 
-class TestLoader(ItemLoader):
-    default_item_class = TestItem
-    default_input_processor = TakeFirst()
+
+class ImmobiliareLoader(HouseLoader):
+    pass
+
 
 

@@ -66,6 +66,7 @@ ITEM_PIPELINES = {
    "crawling_service.pipelines.HousePipeline": 300,
     "crawling_service.pipelines.AddPolysemePipeline": 400,
     "crawling_service.pipelines.WriteToJsonLines": 500,
+    "crawling_service.pipelines.WriteToSQLite": 600,
 }
 
 # Enable and configure the AutoThrottle extension (disabled by default)

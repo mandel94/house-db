@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 import logging
 from scrapy.spiders import SitemapSpider
 import re
-from ..loaders import TestLoader, HouseLoader
+from ..loaders import HouseLoader
 from ..items import House
 from ..exceptions import FeatureTranslationError
 import sys, traceback
@@ -36,67 +36,83 @@ class MyBaseSpider(scrapy.Spider, ABC):
         raise NotImplementedError("Method create_url not implemented")
 
 
-class ImmobiliareSitemapSpider(scrapy.Spider):
-    name = "immobiliare_sitemap"
+class ImmobiliareSpider(scrapy.Spider):
+    name = "immobiliare"
+
+    TEMPLATE_URL = "https://www.immobiliare.it/{publication_type}/{where}/"
 
     start_urls = ["https://www.immobiliare.it/sitemaps/residenziale.xml"]
 
-    namespaces = {
+    sitemap_namespaces = {
         "sitemap": "http://www.sitemaps.org/schemas/sitemap/0.9",
         "xhtml": "http://www.w3.org/1999/xhtml",
     }
 
-    TRANSLATIONS = {
-        "onsale": "vendita-case",
-        "features": {
-            "Tipologia": "type",
-            "Piano": "floor",
-            "Piani edificio": "number_of_floors",
-            "Superficie": "living_space_mq",
-            "Locali": "rooms",
-            "Camere da letto": "bedrooms",
-            "Cucina": "kitchen",
-            "Bagni": "bathrooms",
-            "Arredato": "furnished",
-            "Balcone": "balcony",
-            "Terrazzo": "terrace",
-            "Box, posti auto": "garage_parking_space",
-            "Riscaldamento": "heating",
-            "Climatizzazione": "air_conditioning",
-            "Ascensore": "elevator",
-            "prezzo": "price",
-            "spese condominio": "condo_fees",
-            "Stato": "state",
-            "Certificazione energetic": "energy_certification",
-        },
+    ENDPOINT_TRANSLATIONS = (
+        {  # Translations for the endpoint to immobiliare.it semantics
+            "onsale": "vendita-case",
+        }
+    )
+
+    FEATURE_TRANSLATIONS = {
+        "Tipologia": "type",
+        "Piano": "floor",
+        "Piani edificio": "number_of_floors",
+        "Superficie": "living_space_mq",
+        "Locali": "rooms",
+        "Camere da letto": "bedrooms",
+        "Cucina": "kitchen",
+        "Bagni": "bathrooms",
+        "Arredato": "furnished",
+        "Balcone": "balcony",
+        "Terrazzo": "terrace",
+        "Box, posti auto": "garage_parking_space",
+        "Riscaldamento": "heating",
+        "Climatizzazione": "air_conditioning",
+        "Ascensore": "elevator",
+        "prezzo": "price",
+        "spese condominio": "condo_fees",
+        "Stato": "state",
+        "Certificazione energetic": "energy_certification",
     }
 
-    def __init__(self, where, publication_type, *args, **kwargs):
+    def __init__(self, where, publication_type, version="v1", *args, **kwargs):
         super().__init__(*args, **kwargs)
-        logger.info(
-            f"Creating ImmobiliareSitemapSpider with where: {where} and publication_type: {publication_type}"
-        )
+        if not version in ["v0", "v1"]:
+            raise ValueError("Version must be either 'v0' or 'v1'")
+        self.version = version
         self.where = where.lower().replace(" ", "-").strip("-")
-        self.publication_type = publication_type.lower().replace(" ", "-").strip("-")
+        self.publication_type = self.ENDPOINT_TRANSLATIONS[publication_type] 
+        # Example of publication_type: "onsale"
 
     def parse(self, response):
         try:
-            links = response.xpath(
-                "//sitemap:loc/text()", namespaces=self.namespaces
-            ).extract()
-            for link in links:
-                if self.is_target_link(link):
-                    yield scrapy.Request(url=link, callback=self.parse_item)
+            if self.version == "v0":
+                links = response.xpath(
+                    "//sitemap:loc/text()", namespaces=self.sitemap_namespaces
+                ).extract()
+                for link in links:
+                    if self.is_target_link(link):
+                        yield scrapy.Request(url=link, callback=self.parse_item)
+            elif self.version == "v1":
+                link = self.TEMPLATE_URL.format(
+                    where=self.where,
+                    publication_type=self.publication_type,
+                )
+                logger.debug(f"Link: {link}")
+                yield scrapy.Request(url=link, callback=self.parse_item)
         except Exception as e:
             logger.error(f"Error parsing sitemap: {e}", exc_info=True)
 
     def parse_item(self, response):
         try:
+            logger.debug(f"Processing response from {response.url}")
             for house_card in self.xpath_match_house_card(response):
                 loader = HouseLoader()
                 immobiliare_house_id = self.get_id_from_card(house_card)
                 loader.add_value("immobiliare_id", immobiliare_house_id)
                 link_to_house = self.get_link_from_card(house_card)
+                logger.debug(f"Link to house: {link_to_house}")
                 yield scrapy.Request(
                     url=link_to_house,
                     callback=self.parse_house,
@@ -129,8 +145,10 @@ class ImmobiliareSitemapSpider(scrapy.Spider):
             energy_consumptions_info = self.scrape_energy_consumptions(
                 energy_consumptions_section
             )
+            agency_section = response.xpath("//div[@data-cy='agency-data']")
+            agency_info = self.scrape_agency_info(agency_section)
+            loader.add_value("agency", agency_info["agency_value"])
             self.load_multiple(loader, energy_consumptions_info)
-            logger.debug(f"Costs section: {costs_section}")
             loader.add_value("description", description)
             yield loader.load_item()
         except Exception as e:
@@ -169,6 +187,16 @@ class ImmobiliareSitemapSpider(scrapy.Spider):
         except Exception as e:
             logger.error(f"Error scraping energy consumptions: {e}", exc_info=True)
 
+    def scrape_agency_info(self, agency_section):
+        try:
+            agency_value = agency_section.xpath(".//p/text()").extract()
+            if not agency_value:
+                agency_value = agency_section.xpath(".//a/text()").extract()
+            logger.debug(f"Agency section: {agency_section}")
+            return {"agency_value": agency_value}
+        except Exception as e:
+            logger.error(f"Error scraping agency info: {e}", exc_info=True)
+
     def scrape_child_properties(self, parent_selector, title_xpath, value_xpath):
         energy_consumptions_features = parent_selector.xpath(f"{title_xpath}").getall()
         features_values = parent_selector.xpath(f"{value_xpath}").getall()
@@ -179,7 +207,7 @@ class ImmobiliareSitemapSpider(scrapy.Spider):
             feature_name = feature_name.strip()
             feature_value = feature_value.strip()
             features.append(
-                (self.translate(feature_name, raise_error=False), feature_value)
+                (self.translate_feature(feature_name, raise_error=False), feature_value)
             )
         return features
 
@@ -187,6 +215,7 @@ class ImmobiliareSitemapSpider(scrapy.Spider):
         pub_type = self.TRANSLATIONS.get(self.publication_type)
         where = self.where
         pattern = re.compile(f".*{pub_type}/.*{where}")
+        logger.debug(f"Pub type: {pub_type}, where: {where}, link: {link}, pattern: {pattern}, match: {pattern.match(link)}")
         return pattern.match(link)
 
     def xpath_match_house_card(self, response):
@@ -200,12 +229,12 @@ class ImmobiliareSitemapSpider(scrapy.Spider):
     def get_id_from_card(self, card):
         return card.xpath(".//@id").extract_first()
 
-    def translate(self, feature_name, raise_error=True):
+    def translate_feature(self, feature_name, raise_error=True):
         try:
             if raise_error:
-                return self.TRANSLATIONS["features"][feature_name]
+                return self.FEATURE_TRANSLATIONS[feature_name]
             else:
-                return self.TRANSLATIONS["features"].get(feature_name, None)
+                return self.FEATURE_TRANSLATIONS.get(feature_name, None)
         except KeyError as e:
             err_ctx = f"Error from spider {self.__class__.__name__} when translating feature {feature_name}. Check the TRANSLATIONS dictionary of the spider."
             logger.error(f"{err_ctx}: {e}", exc_info=True)
@@ -223,15 +252,13 @@ class ImmobiliareSitemapSpider(scrapy.Spider):
         except Exception as e:
             logger.error(f"Error loading multiple properties: {e}", exc_info=True)
 
+
 class IdealistaSpider(MyBaseSpider):
     name = "idealista"
     allowed_domains = ["idealista.it"]
 
     def __init__(self, where, publication_type, *args, **kwargs):
         super(IdealistaSpider, self).__init__(where, publication_type, *args, **kwargs)
-        logger.info(
-            f"Creating IdealistaSpider with where: {where} and publication_type: {publication_type}"
-        )
 
     def create_url(self, where, publication_type):
         return MyBaseSpider.url_from_template(

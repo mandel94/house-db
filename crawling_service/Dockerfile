@@ -19,4 +19,6 @@ COPY . /app
 
 # Set the entrypoint
 
+# Run the application explorer
+
 ENTRYPOINT ["python", "main.py"]
