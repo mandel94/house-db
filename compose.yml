@@ -19,6 +19,7 @@ services:
     restart: always
     ports:
       - "8000:5000"
+      - "8001:5001"
     volumes:
       - ./crawling_service:/app
     depends_on:

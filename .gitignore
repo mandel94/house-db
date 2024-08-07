@@ -26,6 +26,7 @@ __pycache__/
 *.pyo
 *.pyd
 *.pylintrc
+house_db_venv/
 .venv/
 .env/
 
@@ -38,4 +39,20 @@ yarn-error.log
 
 # Other custom files
 notes.*
+
+
+.venv/
+
+*.pyc
+__pycache__/
+
+instance/
+
+.pytest_cache/
+.coverage
+htmlcov/
+
+dist/
+build/
+*.egg-info/
 
